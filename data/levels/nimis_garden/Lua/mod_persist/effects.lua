@@ -1,2 +1,0 @@
-
---[[ @Merge: effects() was merged ]]
