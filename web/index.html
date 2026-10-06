@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Baba renderer</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            --bg: #14141c;
+            --panel: #1e1e28;
+            --fg: #e8e8f0;
+            --accent: #e5446d;
+        }
+        body {
+            margin: 0;
+            padding: 24px;
+            background: var(--bg);
+            color: var(--fg);
+            font: 16px/1.5 system-ui, sans-serif;
+        }
+        main {
+            max-width: 760px;
+            margin: 0 auto;
+        }
+        textarea {
+            width: 100%;
+            box-sizing: border-box;
+            min-height: 90px;
+            padding: 10px;
+            background: var(--panel);
+            color: inherit;
+            border: 1px solid #3a3a4a;
+            border-radius: 8px;
+            font: 15px ui-monospace, monospace;
+        }
+        .row {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin: 12px 0;
+        }
+        button {
+            padding: 8px 18px;
+            border: 0;
+            border-radius: 8px;
+            background: var(--accent);
+            color: #fff;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        #out {
+            min-height: 96px;
+            padding: 16px;
+            background: var(--panel);
+            border-radius: 8px;
+            overflow-x: auto;
+        }
+        #out img {
+            image-rendering: pixelated;
+            display: block;
+        }
+        #msg {
+            margin-top: 10px;
+            min-height: 1.5em;
+        }
+        .err {
+            color: #ff8a8a;
+        }
+    </style>
+</head>
+
+<body>
+    <main>
+        <h1>Baba renderer</h1>
+        <textarea id="scene" spellcheck="false">baba is you</textarea>
+        <div class="row">
+            <label>
+                <input type="radio" name="mode" value="r" checked> Text (<code>=r</code>)</label>
+            <label>
+                <input type="radio" name="mode" value="t"> Tiles (<code>=t</code>)</label>
+            <button id="go">Render</button>
+        </div>
+        <div id="out"></div>
+        <div id="msg"></div>
+        <p><small>Tip: in tile mode use full tile names, e.g. <code>baba keke wall text_is</code>. One new render per minute.</small></p>
+    </main>
+    <script>
+        const $ = id => document.getElementById(id);
+        let timer = null,
+            blobUrl = null;
+        const API = ""; // same origin; set e.g. "https://api.example.com" if hosted elsewhere
+
+        function say(text, isError) {
+            $("msg").textContent = text;
+            $("msg").className = isError ? "err" : "";
+        }
+
+        function cooldown(seconds) {
+            clearInterval(timer);
+
+            const end = Date.now() + seconds * 1000;
+            $("go").disabled = true;
+
+            timer = setInterval(() => {
+                const left = Math.ceil((end - Date.now()) / 1000);
+
+                if (left <= 0) {
+                    clearInterval(timer);
+                    $("go").disabled = false;
+                    $("go").textContent = "Render";
+                    return;
+                }
+
+                $("go").textContent = `Wait ${left}s`;
+            }, 250);
+        }
+
+        $("go").onclick = async () => {
+            const mode = document.querySelector('input[name=mode]:checked').value;
+            const q = new URLSearchParams({
+                mode,
+                scene: $("scene").value
+            });
+
+            $("go").disabled = true;
+
+            say("Rendering…");
+
+            try {
+                const res = await fetch(`${API}/render?${q}`);
+
+                if (res.ok) {
+                    const blob = await res.blob();
+                    
+                    if (blobUrl) URL.revokeObjectURL(blobUrl);
+
+                    blobUrl = URL.createObjectURL(blob);
+
+                    const img = new Image();
+                    img.onload = () => {
+                        img.style.width = img.naturalWidth + "px";
+                    };
+                    img.src = blobUrl;
+
+                    $("out").replaceChildren(img);
+                    say(res.headers.get("X-Cache") === "HIT" ? "Loaded from cache." : "Done.");
+                    $("go").disabled = false;
+
+                    return;
+                }
+
+                let detail = res.statusText;
+                
+                try {
+                    detail = (await res.json()).error || detail;
+                } catch {
+
+                }
+
+                if (res.status === 429) {
+                    cooldown(parseInt(res.headers.get("Retry-After") || "60", 10));
+                    say(detail, true);
+                } else {
+                    say(`${res.status}: ${detail}`, true);
+                    $("go").disabled = false;
+                }
+            } catch (e) {
+                say("Could not reach the server.", true);
+                $("go").disabled = false;
+            }
+        };
+    </script>
+</body>
+
+</html>

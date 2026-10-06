@@ -1,3 +1,0 @@
-hi there
-it shouldnt be possible to read this in game
-thanks for checking the files
