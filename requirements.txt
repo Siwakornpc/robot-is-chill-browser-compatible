@@ -24,4 +24,3 @@ cython
 
 pathvalidate
 pyo3_runtime
-git+https://github.com/ROBOT-IS-CHILL/macrosia-glue.git
