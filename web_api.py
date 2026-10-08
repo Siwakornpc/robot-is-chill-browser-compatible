@@ -7,14 +7,17 @@ import sys
 import tempfile
 import time
 from collections import deque
+from datetime import datetime
 from pathlib import Path
 
-from quart import Quart, Response, jsonify, request, send_from_directory
+from quart import Quart, Response, jsonify, redirect, request, send_from_directory
 
 ROOT = Path(__file__).resolve().parent
 CACHE_DIR = ROOT / "cache"
+PUBLIC_RENDER_DIR = CACHE_DIR / "renders"
 WEB_DIR = ROOT / "web"
 CACHE_DIR.mkdir(exist_ok=True)
+PUBLIC_RENDER_DIR.mkdir(exist_ok=True)
 
 RATE_SECONDS = int(os.environ.get("RATE_SECONDS", "0"))
 RENDER_TIMEOUT = float(os.environ.get("RENDER_TIMEOUT", "2"))
@@ -25,6 +28,7 @@ MAX_SCENE_LEN =  2 ** 22
 MAX_SCENE_LINES = 20
 MAX_FAILS_PER_MIN = 10
 CACHE_MAX_FILES = 2000
+PUBLIC_RENDER_MAX_FILES = 2000
 
 app = Quart(__name__)
 cooldown: dict[str, float] = {}      # ip -> time of next allowed render
@@ -73,6 +77,26 @@ def cache_store(key: str, src: Path) -> Path:
     shutil.move(str(src), dest)
     return dest
 
+def save_public_render(src: Path) -> str:
+    timestamp = datetime.now().strftime("render_%Y-%m-%d_%H.%M.%S")
+    suffix = src.suffix
+    filename = f"{timestamp}{suffix}"
+    dest = PUBLIC_RENDER_DIR / filename
+    collision = 1
+
+    while dest.exists():
+        collision += 1
+        filename = f"{timestamp}_{collision}{suffix}"
+        dest = PUBLIC_RENDER_DIR / filename
+
+    shutil.copyfile(src, dest)
+
+    files = sorted(PUBLIC_RENDER_DIR.iterdir(), key=lambda p: p.stat().st_mtime)
+    for old in files[: max(0, len(files) - PUBLIC_RENDER_MAX_FILES)]:
+        old.unlink(missing_ok=True)
+
+    return filename
+
 def image_response(path: Path, cached: bool):
     ctype = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
     resp = Response(path.read_bytes(), mimetype=ctype)
@@ -88,10 +112,17 @@ async def index():
 async def health():
     return jsonify({"ok": True})
 
+@app.get("/renders/<filename>")
+async def public_render(filename: str):
+    response = await send_from_directory(PUBLIC_RENDER_DIR, filename)
+    response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    return response
+
 @app.get("/render")
 async def render_route():
     mode = request.args.get("mode", "r")
     scene = (request.args.get("scene") or "").strip()
+    share = request.args.get("share") == "1"
 
     if mode not in ("t", "r"):
         return error(400, "mode must be 't' (tile) or 'r' (text/rule).")
@@ -109,6 +140,8 @@ async def render_route():
     hit = cache_lookup(key)
     if hit:
         cooldown[ip] = now + RATE_SECONDS
+        if share:
+            return redirect(f"/renders/{save_public_render(hit)}")
         return image_response(hit, cached=True)
 
     ip, now = client_ip(), time.time()
@@ -128,11 +161,11 @@ async def render_route():
     inflight.add(ip)
     try:
         async with slots:
-            return await run_render(mode, scene, key, ip)
+            return await run_render(mode, scene, key, ip, share)
     finally:
         inflight.discard(ip)
 
-async def run_render(mode: str, scene: str, key: str, ip: str):
+async def run_render(mode: str, scene: str, key: str, ip: str, share: bool):
     tmp = Path(tempfile.mkdtemp(prefix="render_"))
 
     try:
@@ -171,7 +204,10 @@ async def run_render(mode: str, scene: str, key: str, ip: str):
             for k in [k for k, v in cooldown.items() if v < time.time()]:
                 del cooldown[k]
                 
-        return image_response(cache_store(key, outputs[0]), cached=False)
+        cached = cache_store(key, outputs[0])
+        if share:
+            return redirect(f"/renders/{save_public_render(cached)}")
+        return image_response(cached, cached=False)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

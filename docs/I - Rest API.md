@@ -61,3 +61,13 @@ The `absolute` HTTP header will be set to 0 or 1 depending on whether the filter
 # Ratelimits
 
 Each endpoint returning dynamic data is limited to one request per IP every 3 seconds, or 10 requests every minute.
+
+## Render service
+
+The Quart renderer in `web_api.py` can also be deployed as a separate service. Use `/render?mode=r&scene=baba%20is%20you` to receive the rendered image directly. Add `&share=1` to redirect to a public, timestamp-named image URL under `/renders/`, which can be used in an `<img>` element:
+
+```html
+<img src="https://YOUR-RENDER-SERVICE/render?mode=r&amp;scene=baba%20is%20you&amp;share=1" alt="Rendered scene">
+```
+
+The renderer keeps up to 2,000 named images in its local cache directory. These URLs are not durable across restarts or redeploys unless that directory is on persistent storage.
