@@ -20,7 +20,7 @@ CACHE_DIR.mkdir(exist_ok=True)
 PUBLIC_RENDER_DIR.mkdir(exist_ok=True)
 
 RATE_SECONDS = int(os.environ.get("RATE_SECONDS", "0"))
-RENDER_TIMEOUT = float(os.environ.get("RENDER_TIMEOUT", "2"))
+RENDER_TIMEOUT = float(os.environ.get("RENDER_TIMEOUT", "60"))
 ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN", "*")
 TRUST_PROXY = os.environ.get("TRUST_PROXY", "0") == "1"
 MAX_CONCURRENT = int(os.environ.get("MAX_CONCURRENT", "2"))
