@@ -5,6 +5,7 @@ import asyncio
 import re
 import sys
 import time
+from datetime import datetime
 
 from headless import HeadlessBot, RenderError, render
 
@@ -12,7 +13,7 @@ from headless import HeadlessBot, RenderError, render
 async def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("scene", help='e.g. "=t baba keke wall" or "=r baba is you"')
-    ap.add_argument("-o", "--out", default="render", help="output name, no extension")
+    ap.add_argument("-o", "--out", help="output name, no extension")
     args = ap.parse_args()
 
     scene, rule = args.scene.strip(), False
@@ -31,7 +32,8 @@ async def main():
         
         t0 = time.perf_counter()
         data, ext = await render(bot, scene, rule)
-        path = f"{args.out}.{ext}"
+        output_name = args.out or datetime.now().strftime("render_%Y-%m-%d_%H.%M.%S")
+        path = f"{output_name}.{ext}"
 
         with open(path, "wb") as fp:
             fp.write(data)
