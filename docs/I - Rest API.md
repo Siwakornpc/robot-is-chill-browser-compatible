@@ -64,7 +64,7 @@ Each endpoint returning dynamic data is limited to one request per IP every 3 se
 
 ## Render service
 
-The Quart renderer in `web_api.py` can also be deployed as a separate service. Use `/render?mode=r&scene=baba%20is%20you` to receive the rendered image directly. Add `&share=1` to redirect to a public, timestamp-named image URL under `/renders/`, which can be used in an `<img>` element:
+The Quart renderer in `web_api.py` can also be deployed as a separate service. Use `/render?mode=r&scene=baba%20is%20you` to receive the rendered image directly. Add `&fresh=1` to bypass the render cache and generate a fresh image. Add `&share=1` to redirect to a public, timestamp-named image URL under `/renders/`, which can be used in an `<img>` element:
 
 ```html
 <img src="https://YOUR-RENDER-SERVICE/render?mode=r&amp;scene=baba%20is%20you&amp;share=1" alt="Rendered scene">

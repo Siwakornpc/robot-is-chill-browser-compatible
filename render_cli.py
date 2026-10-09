@@ -23,17 +23,26 @@ async def main():
         rule = m.group(1) in ("r", "rule")
         scene = m.group(2)
 
+    started = time.perf_counter()
     bot = HeadlessBot("robot.db")
 
     await bot.start()
+    startup_ms = (time.perf_counter() - started) * 1000
+
     try:
+        render_started = time.perf_counter()
+
         if "[" in scene and not bot.macros_enabled:
             raise RenderError("Macros aren't available here (macrosia_glue is not installed).")
         
         t0 = time.perf_counter()
         data, ext = await render(bot, scene, rule)
+        render_ms = (time.perf_counter() - render_started) * 1000
+
         output_name = args.out or datetime.now().strftime("render_%Y-%m-%d_%H.%M.%S")
         path = f"{output_name}.{ext}"
+
+        print(f"Timer: On Startup: {startup_ms:.2f}, On Render: {render_ms:.2f}")
 
         with open(path, "wb") as fp:
             fp.write(data)

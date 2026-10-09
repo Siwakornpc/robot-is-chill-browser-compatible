@@ -9,6 +9,7 @@ grass
 **/.idea/
 **/.vscode/
 .venv/
+.venv*
 venv/*/**
 venv/*
 nohup.out

@@ -85,6 +85,8 @@
                 <input type="radio" name="mode" value="r" checked> Text (<code>=r</code>)</label>
             <label>
                 <input type="radio" name="mode" value="t"> Tiles (<code>=t</code>)</label>
+            <label>
+                <input type="checkbox" id="fresh"> Bypass cache</label>
             <button id="go">Render</button>
         </div>
         <div id="out"></div>
@@ -128,16 +130,19 @@
                 mode,
                 scene: $("scene").value
             });
+            if ($("fresh").checked) q.set("fresh", "1");
 
             $("go").disabled = true;
 
             say("Rendering…");
 
             try {
+                const started = performance.now();
                 const res = await fetch(`${API}/render?${q}`);
 
                 if (res.ok) {
                     const blob = await res.blob();
+                    const totalMs = performance.now() - started;
                     
                     if (blobUrl) URL.revokeObjectURL(blobUrl);
 
@@ -150,7 +155,19 @@
                     img.src = blobUrl;
 
                     $("out").replaceChildren(img);
-                    say(res.headers.get("X-Cache") === "HIT" ? "Loaded from cache." : "Done.");
+                    if (res.headers.get("X-Cache") === "HIT") {
+                        say(`Loaded from cache · ${totalMs.toFixed(0)} ms.`);
+                    } else {
+                        const serverTiming = res.headers.get("Server-Timing") || "";
+                        const startupMs = serverTiming.match(/(?:^|,\s*)startup;dur=([\d.]+)/)?.[1];
+                        const renderMs = serverTiming.match(/(?:^|,\s*)render;dur=([\d.]+)/)?.[1];
+                        const timings = [
+                            startupMs && `Startup ${Number(startupMs).toFixed(0)} ms`,
+                            renderMs && `Render ${Number(renderMs).toFixed(0)} ms`,
+                            `Total ${totalMs.toFixed(0)} ms`
+                        ].filter(Boolean);
+                        say(timings.join(" · "));
+                    }
                     $("go").disabled = false;
 
                     return;

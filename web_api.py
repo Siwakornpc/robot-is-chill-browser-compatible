@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import mimetypes
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -58,7 +59,7 @@ async def add_headers(resp):
     resp.headers["Access-Control-Allow-Origin"] = ALLOWED_ORIGIN
     resp.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
     resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
-    resp.headers["Access-Control-Expose-Headers"] = "Retry-After"
+    resp.headers["Access-Control-Expose-Headers"] = "Retry-After, Server-Timing"
     resp.headers["X-Content-Type-Options"] = "nosniff"
     return resp
 
@@ -123,6 +124,7 @@ async def render_route():
     mode = request.args.get("mode", "r")
     scene = (request.args.get("scene") or "").strip()
     share = request.args.get("share") == "1"
+    fresh = request.args.get("fresh") == "1"
 
     if mode not in ("t", "r"):
         return error(400, "mode must be 't' (tile) or 'r' (text/rule).")
@@ -137,7 +139,7 @@ async def render_route():
     if cooldown.get(ip, 0) > now:
         return error(429, "Too many requests: one render per minute.", cooldown[ip] - now)
 
-    hit = cache_lookup(key)
+    hit = None if fresh else cache_lookup(key)
     if hit:
         cooldown[ip] = now + RATE_SECONDS
         if share:
@@ -161,11 +163,11 @@ async def render_route():
     inflight.add(ip)
     try:
         async with slots:
-            return await run_render(mode, scene, key, ip, share)
+            return await run_render(mode, scene, key, ip, share, fresh)
     finally:
         inflight.discard(ip)
 
-async def run_render(mode: str, scene: str, key: str, ip: str, share: bool):
+async def run_render(mode: str, scene: str, key: str, ip: str, share: bool, fresh: bool):
     tmp = Path(tempfile.mkdtemp(prefix="render_"))
 
     try:
@@ -175,7 +177,7 @@ async def run_render(mode: str, scene: str, key: str, ip: str, share: bool):
         )
 
         try:
-            _, err = await asyncio.wait_for(proc.communicate(), RENDER_TIMEOUT)
+            stdout, err = await asyncio.wait_for(proc.communicate(), RENDER_TIMEOUT)
         except asyncio.TimeoutError:
             proc.kill()
 
@@ -204,10 +206,22 @@ async def run_render(mode: str, scene: str, key: str, ip: str, share: bool):
             for k in [k for k, v in cooldown.items() if v < time.time()]:
                 del cooldown[k]
                 
-        cached = cache_store(key, outputs[0])
+        rendered = outputs[0] if fresh else cache_store(key, outputs[0])
+        timing_match = re.search(
+            r"Timer: On Startup: ([\d.]+), On Render: ([\d.]+)",
+            stdout.decode("utf-8", "replace"),
+        )
+
         if share:
-            return redirect(f"/renders/{save_public_render(cached)}")
-        return image_response(cached, cached=False)
+            response = redirect(f"/renders/{save_public_render(rendered)}")
+        else:
+            response = image_response(rendered, cached=False)
+
+        if timing_match:
+            response.headers["Server-Timing"] = (
+                f"startup;dur={timing_match.group(1)}, render;dur={timing_match.group(2)}"
+            )
+        return response
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
