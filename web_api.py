@@ -124,7 +124,7 @@ async def render_route():
     mode = request.args.get("mode", "r")
     scene = (request.args.get("scene") or "").strip()
     share = request.args.get("share") == "1"
-    fresh = request.args.get("fresh") == "1"
+    fresh = request.args.get("fresh") == "1" or (mode == "t" and scene == "2")
 
     if mode not in ("t", "r"):
         return error(400, "mode must be 't' (tile) or 'r' (text/rule).")
@@ -221,6 +221,8 @@ async def run_render(mode: str, scene: str, key: str, ip: str, share: bool, fres
             response.headers["Server-Timing"] = (
                 f"startup;dur={timing_match.group(1)}, render;dur={timing_match.group(2)}"
             )
+        if fresh:
+            response.headers["Cache-Control"] = "no-store"
         return response
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

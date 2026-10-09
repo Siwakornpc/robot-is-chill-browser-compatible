@@ -85,8 +85,6 @@
                 <input type="radio" name="mode" value="r" checked> Text (<code>=r</code>)</label>
             <label>
                 <input type="radio" name="mode" value="t"> Tiles (<code>=t</code>)</label>
-            <label>
-                <input type="checkbox" id="fresh"> Bypass cache</label>
             <button id="go">Render</button>
         </div>
         <div id="out"></div>
@@ -128,9 +126,9 @@
             const mode = document.querySelector('input[name=mode]:checked').value;
             const q = new URLSearchParams({
                 mode,
-                scene: $("scene").value
+                scene: $("scene").value,
+                fresh: "1"
             });
-            if ($("fresh").checked) q.set("fresh", "1");
 
             $("go").disabled = true;
 
@@ -138,7 +136,7 @@
 
             try {
                 const started = performance.now();
-                const res = await fetch(`${API}/render?${q}`);
+                const res = await fetch(`${API}/render?${q}`, { cache: "no-store" });
 
                 if (res.ok) {
                     const blob = await res.blob();
